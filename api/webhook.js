@@ -93,26 +93,26 @@ module.exports = async (req, res) => {
           replyToken: event.replyToken,
           messages: [{
             type: 'text',
-            text: '🎤 音声を処理中です...\nしばらくお待ちください(最大2分)'
+            text: '🎤 音声を処理中です...\n6分程度の音声の場合、最大2〜3分かかります。\nしばらくお待ちください。'
           }]
         });
 
         try {
           // 音声ファイルをダウンロード
-          const audioContent = await client.getMessageContent(event.message.id);
-          const audioBuffer = [];
-          
-          for await (const chunk of audioContent) {
-            audioBuffer.push(chunk);
-          }
-          
-          const audioData = Buffer.concat(audioBuffer);
+          const messageId = event.message.id;
+          const url = `https://api-data.line.me/v2/bot/message/${messageId}/content`;
 
-          // Gemini 2.5 Proで文字起こし・要約
-          const model = genAI.getGenerativeModel({ 
-  model: 'gemini-1.5-pro'  // 2.5ではなく1.5
-});
+          const audioResponse = await axios.get(url, {
+            headers: {
+              'Authorization': `Bearer ${config.channelAccessToken}`
+            },
+            responseType: 'arraybuffer'
+          });
 
+          const audioData = Buffer.from(audioResponse.data);
+
+          // Gemini 1.5 Proで文字起こし・要約
+          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
           
           const prompt = `以下の音声を文字起こしして、内容を要約してください。
 
@@ -138,14 +138,14 @@ module.exports = async (req, res) => {
             { text: prompt }
           ]);
 
-          const response = result.response.text();
+          const transcriptionResult = result.response.text();
 
           // 結果を送信
           await client.pushMessage({
             to: userId,
             messages: [{
               type: 'text',
-              text: `✅ 処理完了!\n\n${response}`
+              text: `✅ 処理完了!\n\n${transcriptionResult}`
             }]
           });
 
