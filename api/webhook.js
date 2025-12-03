@@ -100,8 +100,8 @@ module.exports = async (req, res) => {
         try {
           // Gemini APIのテスト
           console.log('Testing Gemini API...');
-          const testModel = genAI.getGenerativeModel({ 
-  model: 'models/gemini-1.5-flash-latest' 
+         const testModel = genAI.getGenerativeModel({ 
+  model: 'models/gemini-1.5-flash' 
 });
           const testResult = await testModel.generateContent('Hello');
           console.log('✅ Gemini API works! Response:', testResult.response.text());
