@@ -1,14 +1,9 @@
 {
+  "version": 2,
   "functions": {
-    "api/webhook.js": {
+    "api/**/*.js": {
       "maxDuration": 300,
       "memory": 1024
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/webhook",
-      "destination": "/api/webhook.js"
-    }
-  ]
+  }
 }
