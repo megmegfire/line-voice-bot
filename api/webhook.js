@@ -112,45 +112,28 @@ module.exports = async (req, res) => {
           const audioData = Buffer.from(audioResponse.data);
 
           // Gemini 1.5 Proで文字起こし・要約
-          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+                   // テスト: Gemini APIキーの確認
+          console.log('Testing Gemini API...');
           
-          const prompt = `以下の音声を文字起こしして、内容を要約してください。
+          try {
+            const testModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
+            const testResult = await testModel.generateContent('Test');
+            console.log('✅ Gemini API works!');
+          } catch (testError) {
+            console.error('❌ Gemini test failed:', testError.message);
+          }
 
-【出力形式】
-📝 文字起こし:
-(音声の内容を正確に文字起こし)
-
-📋 要約(3〜5つのポイント):
-• ポイント1
-• ポイント2
-• ポイント3
-
-💭 意図・感情:
-(話者の意図や感情を簡潔に)`;
-
-          const result = await model.generateContent([
-            {
-              inlineData: {
-                mimeType: 'audio/m4a',
-                data: audioData.toString('base64')
-              }
-            },
-            { text: prompt }
-          ]);
-
-          const transcriptionResult = result.response.text();
-
-          // 結果を送信
+          // 一時的なメッセージ
           await client.pushMessage({
             to: userId,
             messages: [{
               type: 'text',
-              text: `✅ 処理完了!\n\n${transcriptionResult}`
+              text: '⚠️ 音声処理機能は現在調整中です。\n\nGemini APIキーをテストしました。\nVercelのログを確認してください。'
             }]
           });
 
-          // 使用回数を記録
           usageTracker[userId].count++;
+NO
 
         } catch (error) {
           console.error('Audio processing error:', error);
