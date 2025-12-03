@@ -93,55 +93,35 @@ module.exports = async (req, res) => {
           replyToken: event.replyToken,
           messages: [{
             type: 'text',
-            text: '🎤 音声を処理中です...\n6分程度の音声の場合、最大2〜3分かかります。\nしばらくお待ちください。'
+            text: '🎤 音声を処理中です...\nGemini APIをテスト中...'
           }]
         });
 
         try {
-          // 音声ファイルをダウンロード
-          const messageId = event.message.id;
-          const url = `https://api-data.line.me/v2/bot/message/${messageId}/content`;
-
-          const audioResponse = await axios.get(url, {
-            headers: {
-              'Authorization': `Bearer ${config.channelAccessToken}`
-            },
-            responseType: 'arraybuffer'
-          });
-
-          const audioData = Buffer.from(audioResponse.data);
-
-          // Gemini 1.5 Proで文字起こし・要約
-                   // テスト: Gemini APIキーの確認
+          // Gemini APIのテスト
           console.log('Testing Gemini API...');
-          
-          try {
-            const testModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
-            const testResult = await testModel.generateContent('Test');
-            console.log('✅ Gemini API works!');
-          } catch (testError) {
-            console.error('❌ Gemini test failed:', testError.message);
-          }
+          const testModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
+          const testResult = await testModel.generateContent('Hello');
+          console.log('✅ Gemini API works! Response:', testResult.response.text());
 
-          // 一時的なメッセージ
+          // テスト成功メッセージ
           await client.pushMessage({
             to: userId,
             messages: [{
               type: 'text',
-              text: '⚠️ 音声処理機能は現在調整中です。\n\nGemini APIキーをテストしました。\nVercelのログを確認してください。'
+              text: '✅ Gemini APIキーは正常です!\n\n次のステップで音声処理を実装します。'
             }]
           });
 
           usageTracker[userId].count++;
-NO
 
         } catch (error) {
-          console.error('Audio processing error:', error);
+          console.error('Gemini API test failed:', error);
           await client.pushMessage({
             to: userId,
             messages: [{
               type: 'text',
-              text: '❌ エラーが発生しました\n\n' + error.message
+              text: '❌ Gemini APIエラー\n\n' + error.message + '\n\nAPIキーを確認してください。'
             }]
           });
         }
