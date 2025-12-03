@@ -109,7 +109,7 @@ module.exports = async (req, res) => {
           const audioData = Buffer.concat(audioBuffer);
 
           // Gemini 2.5 Proで文字起こし・要約
-          const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+          const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
           
           const prompt = `以下の音声を文字起こしして、内容を要約してください。
 
