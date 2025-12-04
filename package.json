@@ -1,21 +1,18 @@
 {
   "name": "line-voice-bot-gemini",
   "version": "1.0.0",
-  "description": "LINE音声メッセージ文字起こし・要約Bot (Gemini Pro版)",
+  "description": "LINE音声メッセージダウンロードBot",
   "main": "api/webhook.js",
   "scripts": {
-    "dev": "vercel dev",
+    "dev": "node api/webhook.js",
     "start": "node api/webhook.js"
   },
   "dependencies": {
     "@line/bot-sdk": "^8.0.0",
-    "@google/generative-ai": "^0.2.1",
-    "axios": "^1.6.2"
+    "axios": "^1.6.2",
+    "cloudinary": "^1.41.0"
   },
   "engines": {
     "node": ">=18"
-  },
-  "keywords": ["line", "bot", "gemini", "voice", "transcription"],
-  "author": "Your Name",
-  "license": "MIT"
+  }
 }
