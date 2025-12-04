@@ -1,6 +1,7 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -19,6 +20,9 @@ cloudinary.config({
 });
 
 const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY;
+
+// Gemini設定
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // 使用状況トラッキング
 const usageTracking = {
@@ -77,10 +81,11 @@ module.exports = async (req, res) => {
                       '1. 音声メッセージを送信\n' +
                       '2. 処理方法を選択:\n' +
                       '   ・速度変更してダウンロード\n' +
-                      '   ・文字起こし・要約\n\n' +
+                      '   ・文字起こし・AI要約\n\n' +
                       '【機能】\n' +
-                      '🎵 速度変更: 0.5〜2.0倍速\n' +
+                      '🎵 速度変更: 1.0〜2.0倍速\n' +
                       '📝 文字起こし: 月180分無料\n' +
+                      '🤖 AI要約: Gemini搭載\n' +
                       '💾 保存期限: なし\n\n' +
                       '【コマンド】\n' +
                       '📊 利用状況 → 利用統計\n' +
@@ -110,7 +115,7 @@ module.exports = async (req, res) => {
           }
 
           // 速度選択の処理
-          if (['0.5', '1.0', '1.5', '2.0'].includes(text)) {
+          if (['1.0', '1.5', '2.0'].includes(text)) {
             const speed = parseFloat(text);
             const cachedAudio = userAudioCache[userId];
             
@@ -151,8 +156,7 @@ module.exports = async (req, res) => {
               }
 
               const adjustedDuration = Math.floor(duration / speed);
-              const speedLabel = speed === 0.5 ? '🐢 ゆっくり' :
-                                speed === 1.0 ? '📢 通常' :
+              const speedLabel = speed === 1.0 ? '📢 通常' :
                                 speed === 1.5 ? '🚀 速い' :
                                 '⚡ 超速';
 
@@ -262,10 +266,21 @@ module.exports = async (req, res) => {
 
               const transcribedText = transcript.text;
 
-              // 簡易要約
-              let summary = transcribedText;
-              if (transcribedText.length > 200) {
-                summary = transcribedText.substring(0, 200) + '...';
+              // Gemini APIで要約生成
+              let summary = '';
+              try {
+                const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+                const prompt = `以下の文字起こしテキストを、重要なポイントを抽出して簡潔に要約してください。箇条書きで3〜5点にまとめてください。\n\nテキスト:\n${transcribedText}`;
+                
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                summary = response.text();
+              } catch (summaryError) {
+                console.error('要約エラー:', summaryError);
+                // 要約失敗時は従来の方法
+                summary = transcribedText.length > 200 
+                  ? transcribedText.substring(0, 200) + '...' 
+                  : transcribedText;
               }
 
               // 使用時間を記録
@@ -279,7 +294,7 @@ module.exports = async (req, res) => {
                   type: 'text',
                   text: `✅ 文字起こし完了!\n\n` +
                         `【全文】\n${transcribedText}\n\n` +
-                        `【要約】\n${summary}\n\n` +
+                        `【AI要約】\n${summary}\n\n` +
                         `処理時間: ${audioMinutes.toFixed(1)}分\n` +
                         `残り無料枠: ${(180 - usageTracking.transcriptionMinutes).toFixed(1)}分/月`
                 }]
@@ -379,34 +394,19 @@ module.exports = async (req, res) => {
                     actions: [
                       {
                         type: 'message',
-                        label: '📝 文字起こし・要約',
+                        label: '📝 文字起こし・AI要約',
                         text: '文字起こし'
                       },
                       {
                         type: 'message',
-                        label: '🐢 0.5倍速',
-                        text: '0.5'
-                      },
-                      {
-                        type: 'message',
-                        label: '📢 1.0倍速',
+                        label: '📢 1.0倍速 (通常)',
                         text: '1.0'
                       },
                       {
                         type: 'message',
-                        label: '🚀 1.5倍速',
+                        label: '🚀 1.5倍速 (速い)',
                         text: '1.5'
-                      }
-                    ]
-                  }
-                },
-                {
-                  type: 'template',
-                  altText: '速度選択',
-                  template: {
-                    type: 'buttons',
-                    text: 'その他の速度',
-                    actions: [
+                      },
                       {
                         type: 'message',
                         label: '⚡ 2.0倍速 (超速)',
