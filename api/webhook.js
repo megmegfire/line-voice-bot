@@ -1,7 +1,6 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -20,9 +19,6 @@ cloudinary.config({
 });
 
 const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY;
-
-// Gemini設定
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // 使用状況トラッキング
 const usageTracking = {
@@ -81,11 +77,10 @@ module.exports = async (req, res) => {
                       '1. 音声メッセージを送信\n' +
                       '2. 処理方法を選択:\n' +
                       '   ・速度変更してダウンロード\n' +
-                      '   ・文字起こし・AI要約\n\n' +
+                      '   ・文字起こし\n\n' +
                       '【機能】\n' +
                       '🎵 速度変更: 1.0〜2.0倍速\n' +
                       '📝 文字起こし: 月180分無料\n' +
-                      '🤖 AI要約: Gemini搭載\n' +
                       '💾 保存期限: なし\n\n' +
                       '【コマンド】\n' +
                       '📊 利用状況 → 利用統計\n' +
@@ -188,153 +183,112 @@ module.exports = async (req, res) => {
           }
 
           // 文字起こし処理
-if (text === '文字起こし') {
-  const cachedAudio = userAudioCache[userId];
-  
-  if (!cachedAudio) {
-    await client.replyMessage({
-      replyToken: event.replyToken,
-      messages: [{
-        type: 'text',
-        text: '⚠️ 音声ファイルが見つかりません。\n先に音声メッセージを送信してください。'
-      }]
-    });
-    return;
-  }
+          if (text === '文字起こし') {
+            const cachedAudio = userAudioCache[userId];
+            
+            if (!cachedAudio) {
+              await client.replyMessage({
+                replyToken: event.replyToken,
+                messages: [{
+                  type: 'text',
+                  text: '⚠️ 音声ファイルが見つかりません。\n先に音声メッセージを送信してください。'
+                }]
+              });
+              return;
+            }
 
-  usageTracking.transcriptionCount++;
+            usageTracking.transcriptionCount++;
 
-  // 処理中メッセージ
-  await client.replyMessage({
-    replyToken: event.replyToken,
-    messages: [{
-      type: 'text',
-      text: '📝 文字起こし中です...\n約30秒〜2分お待ちください'
-    }]
-  });
+            // 処理中メッセージ
+            await client.replyMessage({
+              replyToken: event.replyToken,
+              messages: [{
+                type: 'text',
+                text: '📝 文字起こし中です...\n約30秒〜2分お待ちください'
+              }]
+            });
 
-  try {
-    const audioUrl = cachedAudio.originalUrl;
-    const duration = cachedAudio.duration;
+            try {
+              const audioUrl = cachedAudio.originalUrl;
+              const duration = cachedAudio.duration;
 
-    console.log('Starting transcription for audio:', audioUrl);
+              // AssemblyAI: 文字起こしをリクエスト
+              const transcriptResponse = await axios.post(
+                'https://api.assemblyai.com/v2/transcript',
+                {
+                  audio_url: audioUrl,
+                  language_code: 'ja',
+                  speech_model: 'best'
+                },
+                {
+                  headers: {
+                    authorization: ASSEMBLYAI_API_KEY,
+                    'content-type': 'application/json'
+                  }
+                }
+              );
 
-    // AssemblyAI: 文字起こしをリクエスト
-    const transcriptResponse = await axios.post(
-      'https://api.assemblyai.com/v2/transcript',
-      {
-        audio_url: audioUrl,
-        language_code: 'ja',
-        speech_model: 'best'
-      },
-      {
-        headers: {
-          authorization: ASSEMBLYAI_API_KEY,
-          'content-type': 'application/json'
-        }
-      }
-    );
+              const transcriptId = transcriptResponse.data.id;
 
-    const transcriptId = transcriptResponse.data.id;
-    console.log('Transcription ID:', transcriptId);
+              // ポーリング: 処理完了まで待機
+              let transcript;
+              let attempts = 0;
+              const maxAttempts = 60;
 
-    // ポーリング: 処理完了まで待機
-    let transcript;
-    let attempts = 0;
-    const maxAttempts = 60;
+              while (attempts < maxAttempts) {
+                const pollingResponse = await axios.get(
+                  `https://api.assemblyai.com/v2/transcript/${transcriptId}`,
+                  {
+                    headers: { authorization: ASSEMBLYAI_API_KEY }
+                  }
+                );
 
-    while (attempts < maxAttempts) {
-      const pollingResponse = await axios.get(
-        `https://api.assemblyai.com/v2/transcript/${transcriptId}`,
-        {
-          headers: { authorization: ASSEMBLYAI_API_KEY }
-        }
-      );
+                transcript = pollingResponse.data;
 
-      transcript = pollingResponse.data;
+                if (transcript.status === 'completed') {
+                  break;
+                } else if (transcript.status === 'error') {
+                  throw new Error('文字起こしエラー: ' + transcript.error);
+                }
 
-      if (transcript.status === 'completed') {
-        break;
-      } else if (transcript.status === 'error') {
-        throw new Error('文字起こしエラー: ' + transcript.error);
-      }
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                attempts++;
+              }
 
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      attempts++;
-    }
+              if (!transcript || transcript.status !== 'completed') {
+                throw new Error('文字起こしがタイムアウトしました');
+              }
 
-    if (!transcript || transcript.status !== 'completed') {
-      throw new Error('文字起こしがタイムアウトしました');
-    }
+              const transcribedText = transcript.text;
 
-    const transcribedText = transcript.text;
-    console.log('Transcription completed, length:', transcribedText.length);
+              // 使用時間を記録
+              const audioMinutes = duration / 60;
+              usageTracking.transcriptionMinutes += audioMinutes;
 
-    // Gemini APIで要約生成
-    let summary = '';
-    let summaryError = null;
-    
-    try {
-      console.log('Starting Gemini summarization with gemini-1.5-flash...');
-      
-      // 重要: gemini-1.5-flash を使用
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      
-      const prompt = `以下の文字起こしテキストを、重要なポイントを抽出して簡潔に要約してください。箇条書きで3〜5点にまとめてください。
+              // 結果を送信
+              await client.pushMessage({
+                to: userId,
+                messages: [{
+                  type: 'text',
+                  text: `✅ 文字起こし完了!\n\n` +
+                        `【全文】\n${transcribedText}\n\n` +
+                        `処理時間: ${audioMinutes.toFixed(1)}分\n` +
+                        `残り無料枠: ${(180 - usageTracking.transcriptionMinutes).toFixed(1)}分/月`
+                }]
+              });
 
-テキスト:
-${transcribedText}`;
-      
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      summary = response.text();
-      
-      console.log('Gemini summarization completed successfully');
-      
-    } catch (geminiError) {
-      console.error('Gemini要約エラー:', geminiError.message);
-      summaryError = geminiError.message;
-      
-      // 要約失敗時は従来の方法
-      summary = '（AI要約に失敗しました。全文をご確認ください）';
-    }
-
-    // 使用時間を記録
-    const audioMinutes = duration / 60;
-    usageTracking.transcriptionMinutes += audioMinutes;
-
-    // 結果を送信
-    let resultText = `✅ 文字起こし完了!\n\n【全文】\n${transcribedText}\n\n`;
-    
-    if (summaryError) {
-      resultText += `【要約】\n⚠️ AI要約エラー: ${summaryError}\n\n`;
-    } else {
-      resultText += `【AI要約 🤖】\n${summary}\n\n`;
-    }
-    
-    resultText += `処理時間: ${audioMinutes.toFixed(1)}分\n` +
-                  `残り無料枠: ${(180 - usageTracking.transcriptionMinutes).toFixed(1)}分/月`;
-
-    await client.pushMessage({
-      to: userId,
-      messages: [{
-        type: 'text',
-        text: resultText
-      }]
-    });
-
-  } catch (error) {
-    console.error('文字起こしエラー:', error);
-    await client.pushMessage({
-      to: userId,
-      messages: [{
-        type: 'text',
-        text: `❌ エラー: ${error.message}\n\n短い音声で再度お試しください`
-      }]
-    });
-  }
-  return;
-}
+            } catch (error) {
+              console.error('文字起こしエラー:', error);
+              await client.pushMessage({
+                to: userId,
+                messages: [{
+                  type: 'text',
+                  text: `❌ エラー: ${error.message}\n\n短い音声で再度お試しください`
+                }]
+              });
+            }
+            return;
+          }
         }
 
         // 音声メッセージ処理
@@ -417,7 +371,7 @@ ${transcribedText}`;
                     actions: [
                       {
                         type: 'message',
-                        label: '📝 文字起こし・AI要約',
+                        label: '📝 文字起こし',
                         text: '文字起こし'
                       },
                       {

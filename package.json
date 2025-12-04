@@ -1,5 +1,5 @@
 {
-  "name": "line-voice-bot-gemini",
+  "name": "line-voice-bot",
   "version": "1.0.0",
   "description": "LINE音声処理Bot",
   "main": "api/webhook.js",
@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@line/bot-sdk": "^8.0.0",
-    "@google/generative-ai": "^0.2.1",
     "axios": "^1.6.2",
     "cloudinary": "^1.41.0"
   },
