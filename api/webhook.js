@@ -1,4 +1,4 @@
-undefinedconst line = require('@line/bot-sdk');
+const line = require('@line/bot-sdk');
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
 
